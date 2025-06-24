@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LCOH计算器 (成本构成 & 敏感度分析)</title>
-    <!-- 引入 Chart.js 库 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- 引入 Chart.js 注释插件，用于在图表上画线 -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
         body {
@@ -64,7 +62,7 @@
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 8px;
-            display: none; /* Initially hidden */
+            display: none; 
         }
         .result-main {
             padding: 20px; background-color: #e6f7ff; border: 1px solid #91d5ff;
@@ -159,7 +157,7 @@
             <div class="result-main">
                 <h2>计算结果</h2>
                 <p>平准化氢成本 (LCOH) 为：</p>
-                <p id="lcoh-value">0.00￥/kg H₂</p>
+                <p id="lcoh-value">0.00/kg H₂</p>
             </div>
             
             <div class="charts-grid">
@@ -186,15 +184,12 @@
     </div>
 
 <script>
-// 全局变量，用于存储图表实例，方便更新
 let pieChartInstance = null;
 let tornadoChartInstance = null;
 
-// 主计算函数，用于根据输入参数计算LCOH
 function calculateLcoh(params) {
     const { capex, lifetime, wacc, om_fixed_rate, flh, efficiency, elec_price } = params;
     
-    // 计算资本回收系数 (CRF)
     let crf;
     if (wacc > 0) {
         crf = (wacc * Math.pow(1 + wacc, lifetime)) / (Math.pow(1 + wacc, lifetime) - 1);
@@ -202,16 +197,10 @@ function calculateLcoh(params) {
         crf = 1 / lifetime;
     }
 
-    // 年度化资本成本 (Annuity), rmb/kW/年
     const annualized_capex = capex * crf;
-    // 年度固定运维成本, rmb/kW/年
     const annual_om_fixed = capex * om_fixed_rate;
-    // 年度电力成本, rmb/kW/年
     const annual_electricity_cost = flh * elec_price;
-
-    // 总年度成本, rmb/kW/年
     const total_annual_cost = annualized_capex + annual_om_fixed + annual_electricity_cost;
-    // 年产氢总量, kg/kW/年
     const annual_h2_production = flh / efficiency;
 
     let lcoh = 0;
@@ -229,7 +218,6 @@ function calculateLcoh(params) {
     };
 }
 
-// 更新饼图函数
 function updatePieChart(costData) {
     const ctx = document.getElementById('costPieChart').getContext('2d');
     const totalCost = costData.annualized_capex + costData.annual_om_fixed + costData.annual_electricity_cost;
@@ -276,7 +264,6 @@ function updatePieChart(costData) {
     });
 }
 
-// 运行并更新龙卷风图函数
 function runSensitivityAnalysis() {
     const baseParams = getInputs();
     const baselineResult = calculateLcoh(baseParams);
@@ -298,7 +285,6 @@ function runSensitivityAnalysis() {
         let lowParams = { ...baseParams };
         let highParams = { ...baseParams };
         
-        // WACC 是百分比，特殊处理
         if (param.isRate) {
             lowParams[param.key] *= (1 - sensitivityRange);
             highParams[param.key] *= (1 + sensitivityRange);
@@ -318,13 +304,11 @@ function runSensitivityAnalysis() {
         });
     });
 
-    // 按影响范围从大到小排序
     sensitivityResults.sort((a, b) => b.range - a.range);
     
     updateTornadoChart(sensitivityResults, baselineLcoh);
 }
 
-// 更新龙卷风图的具体实现
 function updateTornadoChart(results, baseline) {
     const ctx = document.getElementById('sensitivityTornadoChart').getContext('2d');
     
@@ -345,11 +329,11 @@ function updateTornadoChart(results, baseline) {
                 backgroundColor: 'rgba(54, 162, 235, 0.6)',
                 borderColor: 'rgba(54, 162, 235, 1)',
                 borderWidth: 1,
-                borderSkipped: false, // 让条形两端都有边框
+                borderSkipped: false, 
             }]
         },
         options: {
-            indexAxis: 'y', // 这使得图表水平显示
+            indexAxis: 'y', 
             responsive: true,
             plugins: {
                 legend: {
@@ -363,7 +347,7 @@ function updateTornadoChart(results, baseline) {
                         }
                     }
                 },
-                // 使用插件画出基准线
+
                 annotation: {
                     annotations: {
                         line1: {
@@ -395,8 +379,6 @@ function updateTornadoChart(results, baseline) {
     });
 }
 
-
-// 从表单获取所有输入值的辅助函数
 function getInputs() {
     return {
         capex: parseFloat(document.getElementById('capex').value),
@@ -409,26 +391,20 @@ function getInputs() {
     };
 }
 
-
-// 表单提交事件监听器
 document.getElementById('lcohForm').addEventListener('submit', function(event) {
     event.preventDefault();
-
     try {
         const baseParams = getInputs();
         const mainResult = calculateLcoh(baseParams);
 
-        // 显示主结果
         const resultsContainer = document.getElementById('results-container');
         const lcohValueP = document.getElementById('lcoh-value');
         lcohValueP.textContent = `rmb${mainResult.lcoh.toFixed(3)} / kg H₂`;
         resultsContainer.style.display = 'block';
 
-        // 更新图表
         updatePieChart(mainResult.costs);
         runSensitivityAnalysis();
 
-        // 平滑滚动到结果区域
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
 
     } catch (error) {
@@ -436,15 +412,12 @@ document.getElementById('lcohForm').addEventListener('submit', function(event) {
     }
 });
 
-// 当敏感度范围变化时，重新运行分析
 document.getElementById('sensitivity-range').addEventListener('change', function() {
-    // 只有在结果已经显示的情况下才重新计算
     if (document.getElementById('results-container').style.display === 'block') {
         runSensitivityAnalysis();
     }
 });
 
-// 注册Chart.js插件
 Chart.register(ChartJsPluginAnnotation);
 
 </script>
