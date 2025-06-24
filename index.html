@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LCOH计算器 (成本构成 & 敏感度分析)</title>
+    <!-- 引入 Chart.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入 Chart.js 注释插件，用于在图表上画线 -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f7f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 25px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        h1 { text-align: center; }
+        form { display: grid; grid-gap: 20px; }
+        fieldset {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        legend { font-weight: bold; color: #0056b3; padding: 0 10px; }
+        .form-group {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            align-items: center;
+            gap: 10px;
+        }
+        label { font-weight: 500; }
+        input[type="number"] {
+            padding: 10px; border: 1px solid #ccc; border-radius: 5px;
+            width: 100%; box-sizing: border-box; font-size: 1em;
+        }
+        .unit { font-size: 0.9em; color: #666; margin-left: 5px; }
+        button {
+            grid-column: 1 / -1; padding: 12px 20px; background-color: #007bff;
+            color: white; border: none; border-radius: 5px; font-size: 1.1em;
+            cursor: pointer; transition: background-color 0.3s ease;
+        }
+        button:hover { background-color: #0056b3; }
+        
+        #results-container {
+            margin-top: 25px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            display: none; /* Initially hidden */
+        }
+        .result-main {
+            padding: 20px; background-color: #e6f7ff; border: 1px solid #91d5ff;
+            border-radius: 8px; text-align: center; margin-bottom: 30px;
+        }
+        .result-main h2 { margin-top: 0; color: #0056b3; border-bottom: none; }
+        #lcoh-value { font-size: 2.5em; font-weight: bold; color: #096dd9; }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        .chart-container {
+            padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #fff;
+        }
+        .chart-container h3 { text-align: center; margin-top: 0; color: #333; }
+        #sensitivity-controls { margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 10px;}
+
+        .footer { text-align: center; margin-top: 20px; font-size: 0.9em; color: #777; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            .form-group { grid-template-columns: 1fr; gap: 5px; }
+            .unit { grid-column: 1; margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>LCOH计算器</h1>
+        <p>该工具根据 IEA及Hydrogen Europe 方法论计算LCOH，并提供成本构成分析和参数敏感度分析。</p>
+
+        <form id="lcohForm">
+                <fieldset>
+                <legend>资本与寿命参数</legend>
+                <div class="form-group">
+                    <label for="capex">电解槽资本支出 (CAPEX)</label>
+                    <input type="number" id="capex" value="2000" step="any" required>
+                    <span class="unit">rmb/kW</span>
+                </div>
+                <div class="form-group">
+                    <label for="lifetime">设备经济寿命 (n)</label>
+                    <input type="number" id="lifetime" value="10" step="any" required>
+                    <span class="unit">年</span>
+                </div>
+                <div class="form-group">
+                    <label for="wacc">加权平均资本成本 (WACC/i)</label>
+                    <input type="number" id="wacc" value="4.90" step="any" required>
+                    <span class="unit">%</span>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>运营与效率参数</legend>
+                <div class="form-group">
+                    <label for="om_fixed">固定运维成本 (占CAPEX百分比)</label>
+                    <input type="number" id="om_fixed" value="3.20" step="any" required>
+                    <span class="unit">% / 年</span>
+                </div>
+                <div class="form-group">
+                    <label for="flh">年满负荷运行小时数 (FLH)</label>
+                    <input type="number" id="flh" value="4000" step="any" required>
+                    <span class="unit">小时/年</span>
+                </div>
+                <div class="form-group">
+                    <label for="efficiency">电解效率 (电-氢)</label>
+                    <input type="number" id="efficiency" value="50.5" step="any" required>
+                    <span class="unit">kWh/kg H₂</span>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>成本参数</legend>
+                <div class="form-group">
+                    <label for="elec_price">平均电价</label>
+                    <input type="number" id="elec_price" value="0.30" step="any" required>
+                    <span class="unit">rmb/kWh</span>
+                </div>
+            </fieldset>
+            
+            <button type="submit">计算 LCOH 及分析</button>
+        </form>
+
+        <div id="results-container">
+            <div class="result-main">
+                <h2>计算结果</h2>
+                <p>平准化氢成本 (LCOH) 为：</p>
+                <p id="lcoh-value">0.00￥/kg H₂</p>
+            </div>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>LCOH 成本构成</h3>
+                    <canvas id="costPieChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>参数敏感度分析 (龙卷风图)</h3>
+                    <div id="sensitivity-controls">
+                        <label for="sensitivity-range">变化范围:</label>
+                        <input type="number" id="sensitivity-range" value="20" step="5" style="width: 60px;">
+                        <span>%</span>
+                    </div>
+                    <canvas id="sensitivityTornadoChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>这是一个基于标准公式的粗算工具，其计算逻辑与IEA及Hydrogen Europe等复杂能源系统模型一致。计算结果仅供参考。</p>
+	<p>实际项目结果可能因更复杂的因素而异，比如此计算器未计算电解槽性能的衰减、实际运营条件的各类修正等。</p>
+    </div>
+
+<script>
+// 全局变量，用于存储图表实例，方便更新
+let pieChartInstance = null;
+let tornadoChartInstance = null;
+
+// 主计算函数，用于根据输入参数计算LCOH
+function calculateLcoh(params) {
+    const { capex, lifetime, wacc, om_fixed_rate, flh, efficiency, elec_price } = params;
+    
+    // 计算资本回收系数 (CRF)
+    let crf;
+    if (wacc > 0) {
+        crf = (wacc * Math.pow(1 + wacc, lifetime)) / (Math.pow(1 + wacc, lifetime) - 1);
+    } else {
+        crf = 1 / lifetime;
+    }
+
+    // 年度化资本成本 (Annuity), rmb/kW/年
+    const annualized_capex = capex * crf;
+    // 年度固定运维成本, rmb/kW/年
+    const annual_om_fixed = capex * om_fixed_rate;
+    // 年度电力成本, rmb/kW/年
+    const annual_electricity_cost = flh * elec_price;
+
+    // 总年度成本, rmb/kW/年
+    const total_annual_cost = annualized_capex + annual_om_fixed + annual_electricity_cost;
+    // 年产氢总量, kg/kW/年
+    const annual_h2_production = flh / efficiency;
+
+    let lcoh = 0;
+    if (annual_h2_production > 0) {
+        lcoh = total_annual_cost / annual_h2_production;
+    }
+
+    return {
+        lcoh: lcoh,
+        costs: {
+            annualized_capex: annualized_capex,
+            annual_om_fixed: annual_om_fixed,
+            annual_electricity_cost: annual_electricity_cost
+        }
+    };
+}
+
+// 更新饼图函数
+function updatePieChart(costData) {
+    const ctx = document.getElementById('costPieChart').getContext('2d');
+    const totalCost = costData.annualized_capex + costData.annual_om_fixed + costData.annual_electricity_cost;
+
+    if (pieChartInstance) {
+        pieChartInstance.destroy();
+    }
+    pieChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: [
+                `年度化投资成本 (${(costData.annualized_capex / totalCost * 100).toFixed(1)}%)`,
+                `年度运维成本 (OPEX) (${(costData.annual_om_fixed / totalCost * 100).toFixed(1)}%)`,
+                `年度电力成本 (${(costData.annual_electricity_cost / totalCost * 100).toFixed(1)}%)`
+            ],
+            datasets: [{
+                data: [costData.annualized_capex, costData.annual_om_fixed, costData.annual_electricity_cost],
+                backgroundColor: ['#36a2eb', '#ffcd56', '#ff6384'],
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed !== null) {
+                                label += `rmb${context.parsed.toFixed(2)} /kW/年`;
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 运行并更新龙卷风图函数
+function runSensitivityAnalysis() {
+    const baseParams = getInputs();
+    const baselineResult = calculateLcoh(baseParams);
+    const baselineLcoh = baselineResult.lcoh;
+    const sensitivityRange = parseFloat(document.getElementById('sensitivity-range').value) / 100;
+
+    const parametersToTest = [
+        { key: 'elec_price', label: '电价' },
+        { key: 'capex', label: '资本支出 (CAPEX)' },
+        { key: 'flh', label: '年运行小时数 (FLH)' },
+        { key: 'wacc', label: '资本成本 (WACC)', isRate: true },
+        { key: 'efficiency', label: '电解效率' },
+        { key: 'lifetime', label: '设备寿命' }
+    ];
+
+    let sensitivityResults = [];
+
+    parametersToTest.forEach(param => {
+        let lowParams = { ...baseParams };
+        let highParams = { ...baseParams };
+        
+        // WACC 是百分比，特殊处理
+        if (param.isRate) {
+            lowParams[param.key] *= (1 - sensitivityRange);
+            highParams[param.key] *= (1 + sensitivityRange);
+        } else {
+             lowParams[param.key] *= (1 - sensitivityRange);
+             highParams[param.key] *= (1 + sensitivityRange);
+        }
+
+        const lcohLow = calculateLcoh(lowParams).lcoh;
+        const lcohHigh = calculateLcoh(highParams).lcoh;
+        
+        sensitivityResults.push({
+            label: param.label,
+            low: lcohLow,
+            high: lcohHigh,
+            range: Math.abs(lcohHigh - lcohLow)
+        });
+    });
+
+    // 按影响范围从大到小排序
+    sensitivityResults.sort((a, b) => b.range - a.range);
+    
+    updateTornadoChart(sensitivityResults, baselineLcoh);
+}
+
+// 更新龙卷风图的具体实现
+function updateTornadoChart(results, baseline) {
+    const ctx = document.getElementById('sensitivityTornadoChart').getContext('2d');
+    
+    if (tornadoChartInstance) {
+        tornadoChartInstance.destroy();
+    }
+
+    const labels = results.map(r => r.label);
+    const data = results.map(r => [r.low, r.high]);
+
+    tornadoChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'LCOH 范围',
+                data: data,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                borderSkipped: false, // 让条形两端都有边框
+            }]
+        },
+        options: {
+            indexAxis: 'y', // 这使得图表水平显示
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            return `范围: rmb${value[0].toFixed(3)} - €${value[1].toFixed(3)}`;
+                        }
+                    }
+                },
+                // 使用插件画出基准线
+                annotation: {
+                    annotations: {
+                        line1: {
+                            type: 'line',
+                            xMin: baseline,
+                            xMax: baseline,
+                            borderColor: 'red',
+                            borderWidth: 2,
+                            borderDash: [6, 6],
+                            label: {
+                                content: `基准 LCOH: rmb${baseline.toFixed(3)}`,
+                                display: true,
+                                position: 'end',
+                                backgroundColor: 'rgba(255, 0, 0, 0.7)'
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'LCOH (rmb/kg H₂)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+
+// 从表单获取所有输入值的辅助函数
+function getInputs() {
+    return {
+        capex: parseFloat(document.getElementById('capex').value),
+        lifetime: parseFloat(document.getElementById('lifetime').value),
+        wacc: parseFloat(document.getElementById('wacc').value) / 100,
+        om_fixed_rate: parseFloat(document.getElementById('om_fixed').value) / 100,
+        flh: parseFloat(document.getElementById('flh').value),
+        efficiency: parseFloat(document.getElementById('efficiency').value),
+        elec_price: parseFloat(document.getElementById('elec_price').value)
+    };
+}
+
+
+// 表单提交事件监听器
+document.getElementById('lcohForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    try {
+        const baseParams = getInputs();
+        const mainResult = calculateLcoh(baseParams);
+
+        // 显示主结果
+        const resultsContainer = document.getElementById('results-container');
+        const lcohValueP = document.getElementById('lcoh-value');
+        lcohValueP.textContent = `rmb${mainResult.lcoh.toFixed(3)} / kg H₂`;
+        resultsContainer.style.display = 'block';
+
+        // 更新图表
+        updatePieChart(mainResult.costs);
+        runSensitivityAnalysis();
+
+        // 平滑滚动到结果区域
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+
+    } catch (error) {
+        alert('计算出错，请检查输入值是否有效！\n' + error);
+    }
+});
+
+// 当敏感度范围变化时，重新运行分析
+document.getElementById('sensitivity-range').addEventListener('change', function() {
+    // 只有在结果已经显示的情况下才重新计算
+    if (document.getElementById('results-container').style.display === 'block') {
+        runSensitivityAnalysis();
+    }
+});
+
+// 注册Chart.js插件
+Chart.register(ChartJsPluginAnnotation);
+
+</script>
+
+</body>
+</html>
